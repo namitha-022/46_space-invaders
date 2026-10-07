@@ -103,8 +103,5 @@ Submission is only the following three things:
 
 
 
-LLM chat link 
-https://chatgpt.com/share/6ac5d431-0d9c-83ee-bd4b-005d8149e9b7
-
-before and after videos 
+LLM chat link, before and after videos 
 https://drive.google.com/drive/folders/1Ks8SYhaNLDx7zafdcQ6YOY7kbfT056hq
