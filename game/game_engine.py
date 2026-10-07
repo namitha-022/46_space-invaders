@@ -17,42 +17,108 @@ class GameEngine:
         self.width = width
         self.height = height
 
-        self.player = Player(
-            width // 2 - 20,
-            height - 50,
-            40,
-            20
-        )
+        # Difficulty settings
+        self.difficulties = {
+            "easy": {
+                "enemy_speed": 1.0,
+                "enemy_fire_chance": 0.005
+            },
+            "medium": {
+                "enemy_speed": 1.5,
+                "enemy_fire_chance": 0.01
+            },
+            "hard": {
+                "enemy_speed": 2.5,
+                "enemy_fire_chance": 0.02
+            }
+        }
 
-        self.enemy_grid = EnemyGrid(width)
+        self.difficulty = "medium"
 
-        self.player_bullets = []
-        self.enemy_bullets = []
-
-        self._shoot_cooldown = 0
-        self.enemy_fire_chance = 0.01
-
-        self.score = 0
-
-        # Game states:
-        # "playing" -> game is running
-        # "game_over" -> game has ended
-        self.state = "playing"
+        # Create the initial game
+        self.reset_game()
 
         # Fonts
         self.font = pygame.font.SysFont("Arial", 30)
         self.game_over_font = pygame.font.SysFont("Arial", 60)
         self.final_score_font = pygame.font.SysFont("Arial", 36)
-        self.instruction_font = pygame.font.SysFont("Arial", 28)
+        self.instruction_font = pygame.font.SysFont("Arial", 26)
+
+    def reset_game(self):
+        """
+        Completely reset the game using the selected difficulty.
+        """
+
+        settings = self.difficulties[self.difficulty]
+
+        # Reset player
+        self.player = Player(
+            self.width // 2 - 20,
+            self.height - 50,
+            40,
+            20
+        )
+
+        # Reset enemies
+        self.enemy_grid = EnemyGrid(
+            self.width,
+            speed=settings["enemy_speed"]
+        )
+
+        # Reset bullets
+        self.player_bullets = []
+        self.enemy_bullets = []
+
+        # Reset shooting
+        self._shoot_cooldown = 0
+
+        # Set enemy firing rate
+        self.enemy_fire_chance = settings["enemy_fire_chance"]
+
+        # Reset score
+        self.score = 0
+
+        # Start playing
+        self.state = "playing"
+
+    def start_new_game(self, difficulty):
+        """
+        Start a completely new game with the selected difficulty.
+        """
+
+        self.difficulty = difficulty
+        self.reset_game()
 
     def handle_event(self, event):
-        # Ignore game controls while game is over
+        # Game-over controls
         if self.state == "game_over":
+            if event.type == pygame.KEYDOWN:
+
+                # Easy
+                if event.key == pygame.K_1:
+                    self.start_new_game("easy")
+
+                # Medium
+                elif event.key == pygame.K_2:
+                    self.start_new_game("medium")
+
+                # Hard
+                elif event.key == pygame.K_3:
+                    self.start_new_game("hard")
+
+                # Quit
+                elif event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
+                    pygame.event.post(
+                        pygame.event.Event(pygame.QUIT)
+                    )
+
             return
 
+        # Normal gameplay controls
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 if self._shoot_cooldown <= 0:
+
                     bullet_x = self.player.center_x() - 2
 
                     self.player_bullets.append(
@@ -66,7 +132,7 @@ class GameEngine:
                     self._shoot_cooldown = 15
 
     def handle_input(self):
-        # Do not allow movement after game over
+        # Do not allow movement during game over
         if self.state == "game_over":
             return
 
@@ -85,7 +151,7 @@ class GameEngine:
             )
 
     def update(self):
-        # Stop updating the game once game over occurs
+        # Stop updating after game over
         if self.state == "game_over":
             return
 
@@ -99,6 +165,7 @@ class GameEngine:
         # Enemy shooting
         for enemy in self.enemy_grid.alive_enemies():
             if random.random() < self.enemy_fire_chance:
+
                 bullet_x = enemy.x + enemy.width // 2
 
                 self.enemy_bullets.append(
@@ -109,34 +176,42 @@ class GameEngine:
                     )
                 )
 
-        # Move bullets
+        # Move player bullets
         for bullet in self.player_bullets:
             bullet.move()
 
+        # Move enemy bullets
         for bullet in self.enemy_bullets:
             bullet.move()
 
-        # Remove off-screen bullets
+        # Remove off-screen player bullets
         self.player_bullets = [
             bullet
             for bullet in self.player_bullets
             if not bullet.off_screen(self.height)
         ]
 
+        # Remove off-screen enemy bullets
         self.enemy_bullets = [
             bullet
             for bullet in self.enemy_bullets
             if not bullet.off_screen(self.height)
         ]
 
-        # Player bullet -> enemy collision
+        # --------------------------------------------------
+        # PLAYER BULLET -> ENEMY COLLISION
+        # --------------------------------------------------
+
         remaining_player_bullets = []
 
         for bullet in self.player_bullets:
+
             bullet_hit = False
 
             for enemy in self.enemy_grid.alive_enemies():
+
                 if bullet.rect().colliderect(enemy.rect()):
+
                     enemy.alive = False
                     self.score += 1
                     bullet_hit = True
@@ -147,83 +222,98 @@ class GameEngine:
             if not bullet_hit:
                 remaining_player_bullets.append(bullet)
 
+        # Replace list after iteration
         self.player_bullets = remaining_player_bullets
 
-        # Enemy bullet -> player collision
-        player_hit = False
+        # --------------------------------------------------
+        # ENEMY BULLET -> PLAYER COLLISION
+        # --------------------------------------------------
 
         for bullet in self.enemy_bullets:
-            if bullet.rect().colliderect(self.player.rect()):
-                player_hit = True
-                break
 
-        if player_hit:
-            self.state = "game_over"
-            return
+            if bullet.rect().colliderect(
+                self.player.rect()
+            ):
+                self.state = "game_over"
+                return
 
-        # Enemy reached bottom
-        if self.enemy_grid.reached_bottom(self.player.y):
+        # --------------------------------------------------
+        # ENEMIES REACHED BOTTOM
+        # --------------------------------------------------
+
+        if self.enemy_grid.reached_bottom(
+            self.player.y
+        ):
             self.state = "game_over"
             return
 
     def render(self, screen):
-        # Always draw the game objects first
         screen.fill(BLACK)
 
-        # Player
-        pygame.draw.rect(
-            screen,
-            GREEN,
-            self.player.rect()
-        )
+        # --------------------------------------------------
+        # GAMEPLAY SCREEN
+        # --------------------------------------------------
 
-        # Enemies
-        for enemy in self.enemy_grid.alive_enemies():
+        if self.state == "playing":
+
+            # Player
             pygame.draw.rect(
                 screen,
-                WHITE,
-                enemy.rect()
+                GREEN,
+                self.player.rect()
             )
 
-        # Player bullets
-        for bullet in self.player_bullets:
-            pygame.draw.rect(
-                screen,
-                WHITE,
-                bullet.rect()
+            # Enemies
+            for enemy in self.enemy_grid.alive_enemies():
+
+                pygame.draw.rect(
+                    screen,
+                    WHITE,
+                    enemy.rect()
+                )
+
+            # Player bullets
+            for bullet in self.player_bullets:
+
+                pygame.draw.rect(
+                    screen,
+                    WHITE,
+                    bullet.rect()
+                )
+
+            # Enemy bullets
+            for bullet in self.enemy_bullets:
+
+                pygame.draw.rect(
+                    screen,
+                    RED,
+                    bullet.rect()
+                )
+
+            # Score
+            score_text = self.font.render(
+                f"Score: {self.score}",
+                True,
+                WHITE
             )
 
-        # Enemy bullets
-        for bullet in self.enemy_bullets:
-            pygame.draw.rect(
-                screen,
-                RED,
-                bullet.rect()
+            screen.blit(
+                score_text,
+                (10, 10)
             )
 
-        # Score during gameplay
-        score_text = self.font.render(
-            f"Score: {self.score}",
-            True,
-            WHITE
-        )
+        # --------------------------------------------------
+        # GAME OVER SCREEN
+        # --------------------------------------------------
 
-        screen.blit(score_text, (10, 10))
+        elif self.state == "game_over":
 
-        # Game-over screen
-        if self.state == "game_over":
             self.render_game_over(screen)
 
     def render_game_over(self, screen):
-        # Dark overlay
-        overlay = pygame.Surface(
-            (self.width, self.height)
-        )
 
-        overlay.set_alpha(180)
-        overlay.fill(BLACK)
-
-        screen.blit(overlay, (0, 0))
+        # Dark background
+        screen.fill(BLACK)
 
         # GAME OVER
         game_over_text = self.game_over_font.render(
@@ -233,7 +323,10 @@ class GameEngine:
         )
 
         game_over_rect = game_over_text.get_rect(
-            center=(self.width // 2, self.height // 2 - 80)
+            center=(
+                self.width // 2,
+                120
+            )
         )
 
         screen.blit(
@@ -249,7 +342,10 @@ class GameEngine:
         )
 
         score_rect = score_text.get_rect(
-            center=(self.width // 2, self.height // 2)
+            center=(
+                self.width // 2,
+                200
+            )
         )
 
         screen.blit(
@@ -257,18 +353,75 @@ class GameEngine:
             score_rect
         )
 
-        # Instruction
-        instruction_text = self.instruction_font.render(
-            "Press any key to continue",
+        # Difficulty
+        difficulty_text = self.instruction_font.render(
+            f"Difficulty: {self.difficulty.capitalize()}",
             True,
             WHITE
         )
 
-        instruction_rect = instruction_text.get_rect(
-            center=(self.width // 2, self.height // 2 + 60)
+        difficulty_rect = difficulty_text.get_rect(
+            center=(
+                self.width // 2,
+                250
+            )
         )
 
         screen.blit(
-            instruction_text,
-            instruction_rect
+            difficulty_text,
+            difficulty_rect
+        )
+
+        # Replay options
+        easy_text = self.instruction_font.render(
+            "1 - Easy",
+            True,
+            WHITE
+        )
+
+        medium_text = self.instruction_font.render(
+            "2 - Medium",
+            True,
+            WHITE
+        )
+
+        hard_text = self.instruction_font.render(
+            "3 - Hard",
+            True,
+            WHITE
+        )
+
+        quit_text = self.instruction_font.render(
+            "Q / ESC - Quit",
+            True,
+            WHITE
+        )
+
+        # Draw options
+        screen.blit(
+            easy_text,
+            easy_text.get_rect(
+                center=(self.width // 2, 330)
+            )
+        )
+
+        screen.blit(
+            medium_text,
+            medium_text.get_rect(
+                center=(self.width // 2, 380)
+            )
+        )
+
+        screen.blit(
+            hard_text,
+            hard_text.get_rect(
+                center=(self.width // 2, 430)
+            )
+        )
+
+        screen.blit(
+            quit_text,
+            quit_text.get_rect(
+                center=(self.width // 2, 500)
+            )
         )
